@@ -4,14 +4,21 @@ on:
     branches:
       - visualjev-v77-apk-build
   workflow_dispatch:
+
 permissions:
-  contents: read
+  contents: write
+  actions: read
+
 jobs:
   build:
+    if: ${{ !contains(github.event.head_commit.message || '', '[apk-result]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: visualjev-v77-apk-build
+
       - name: Reconstruct project
         shell: bash
         run: |
@@ -27,26 +34,71 @@ jobs:
           unzip -q project.zip -d buildsrc
           test -f buildsrc/settings.gradle.kts
           test -f buildsrc/app/src/main/assets/index.html
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - uses: android-actions/setup-android@v3
+
       - name: Install SDK
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
+
       - name: Build APK
+        id: apkbuild
+        continue-on-error: true
         working-directory: buildsrc
         run: gradle :app:assembleDebug --stacktrace --no-daemon
+
       - name: Stage APK
-        run: cp buildsrc/app/build/outputs/apk/debug/app-debug.apk VisualJev-v7.7-debug.apk
-      - uses: actions/upload-artifact@v4
+        id: stage
+        if: steps.apkbuild.outcome == 'success'
+        run: |
+          cp buildsrc/app/build/outputs/apk/debug/app-debug.apk VisualJev-v7.7-debug.apk
+          ls -lh VisualJev-v7.7-debug.apk
+
+      - name: Upload APK
+        if: steps.apkbuild.outcome == 'success'
+        uses: actions/upload-artifact@v4
         with:
           name: VisualJev-v7.7-APK
           path: VisualJev-v7.7-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Write build result
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p visualjev-v7.7-apk
+          cat > visualjev-v7.7-apk/build-result.json <<EOF
+          {
+            "run_id": "${{ github.run_id }}",
+            "run_attempt": "${{ github.run_attempt }}",
+            "head_sha": "${{ github.sha }}",
+            "build_outcome": "${{ steps.apkbuild.outcome }}",
+            "stage_outcome": "${{ steps.stage.outcome }}"
+          }
+          EOF
+          cat visualjev-v7.7-apk/build-result.json
+
+      - name: Commit build result
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "VisualJev Build Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add visualjev-v7.7-apk/build-result.json
+          git commit -m "[apk-result] VisualJev v7.7 build result" || exit 0
+          git push origin HEAD:visualjev-v77-apk-build
+
+      - name: Fail workflow if build failed
+        if: steps.apkbuild.outcome != 'success'
+        run: exit 1
