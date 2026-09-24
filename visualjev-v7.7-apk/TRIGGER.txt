@@ -1,3 +1,4 @@
 VisualJev v7.7 APK build trigger
 motion-sieve patch enabled
 androidx enabled
+java17 aligned
