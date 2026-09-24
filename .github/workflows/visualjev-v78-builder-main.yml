@@ -30,7 +30,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat visualjev-v7.8-apk/chunks/part00 \
+          cat visualjev-v7.8-apk/chunks/part00a \
+              visualjev-v7.8-apk/chunks/part00b \
               visualjev-v7.8-apk/chunks/part01 \
               visualjev-v7.8-apk/chunks/part02 \
               visualjev-v7.8-apk/chunks/part03 \
