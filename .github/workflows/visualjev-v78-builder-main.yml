@@ -3,8 +3,6 @@ name: VisualJev v7.8 APK Builder
 on:
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/visualjev-v78-builder-main.yml'
   workflow_dispatch:
 
 permissions:
