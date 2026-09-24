@@ -1,0 +1,112 @@
+name: VisualJev v7.8 APK Builder
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/visualjev-v78-builder-main.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout v7.8 build branch
+        uses: actions/checkout@v4
+        with:
+          ref: visualjev-v78-apk-build
+          fetch-depth: 0
+
+      - name: Reconstruct Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat visualjev-v7.8-apk/chunks/part00 \
+              visualjev-v7.8-apk/chunks/part01 \
+              visualjev-v7.8-apk/chunks/part02 \
+              visualjev-v7.8-apk/chunks/part03 \
+              visualjev-v7.8-apk/chunks/part04 \
+              visualjev-v7.8-apk/chunks/part05 \
+              visualjev-v7.8-apk/chunks/part06 > project.b64
+          base64 --decode project.b64 > project.zip
+          mkdir unpacked
+          unzip -q project.zip -d unpacked
+          ROOT="unpacked/visualjev-v7.8-android"
+          test -f "$ROOT/settings.gradle.kts"
+          test -f "$ROOT/app/src/main/assets/index.html"
+          grep -q "HTML VisualJev v7.8" "$ROOT/app/src/main/assets/index.html"
+          grep -q "TaskJev" "$ROOT/app/src/main/assets/index.html"
+          grep -q "AppIdentityJev" "$ROOT/app/src/main/assets/index.html"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify Android SDK
+        shell: bash
+        run: |
+          set -e
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Build APK
+        id: apkbuild
+        continue-on-error: true
+        working-directory: ${{ env.ROOT }}
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Stage APK
+        id: stage
+        if: steps.apkbuild.outcome == 'success'
+        run: |
+          cp "$ROOT/app/build/outputs/apk/debug/app-debug.apk" VisualJev-v7.8-debug.apk
+          ls -lh VisualJev-v7.8-debug.apk
+
+      - name: Upload APK artifact
+        if: steps.apkbuild.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: VisualJev-v7.8-APK
+          path: VisualJev-v7.8-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Write result marker
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p visualjev-v7.8-apk
+          cat > visualjev-v7.8-apk/build-result-main.json <<EOF
+          {
+            "run_id": "${{ github.run_id }}",
+            "run_attempt": "${{ github.run_attempt }}",
+            "workflow_sha": "${{ github.sha }}",
+            "build_outcome": "${{ steps.apkbuild.outcome }}",
+            "stage_outcome": "${{ steps.stage.outcome }}"
+          }
+          EOF
+          git config user.name "VisualJev Build Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add visualjev-v7.8-apk/build-result-main.json
+          git commit -m "[apk-result] VisualJev v7.8 build result" || exit 0
+          git push origin HEAD:visualjev-v78-apk-build
+
+      - name: Fail if APK build failed
+        if: steps.apkbuild.outcome != 'success'
+        run: exit 1
