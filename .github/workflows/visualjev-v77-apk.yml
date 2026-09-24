@@ -43,6 +43,12 @@ jobs:
           python visualjev-v7.7-apk/patch-motion-sieve.py buildsrc/app/src/main/assets/index.html
           grep -q "MOTION_THRESHOLDS=\[6,12,18,28\]" buildsrc/app/src/main/assets/index.html
           grep -q "lower_motion_threshold_means_more_sensitive:true" buildsrc/app/src/main/assets/index.html
+          cat > buildsrc/gradle.properties <<'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=false
+          org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+          kotlin.code.style=official
+          EOF
 
       - uses: actions/setup-java@v4
         with:
