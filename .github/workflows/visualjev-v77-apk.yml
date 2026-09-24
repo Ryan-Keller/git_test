@@ -49,6 +49,16 @@ jobs:
           org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
           kotlin.code.style=official
           EOF
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("buildsrc/app/build.gradle.kts")
+          s=p.read_text()
+          marker="    buildTypes {"
+          if "compileOptions {" not in s:
+              s=s.replace(marker, "    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }\n\n"+marker, 1)
+          p.write_text(s)
+          PY
+          grep -q "sourceCompatibility = JavaVersion.VERSION_17" buildsrc/app/build.gradle.kts
 
       - uses: actions/setup-java@v4
         with:
